@@ -1,0 +1,171 @@
+
+ <div class="container-fluid">
+ <?php
+// Функция для конвертации PNG в WEBP и вывод изображения
+function convertPngToWebp($imagePath) {
+    // Проверяем, существует ли файл
+    // Создаём изображение из файла PNG
+    $image = imagecreatefrompng($imagePath);
+
+    // Начинаем буферизацию вывода
+    ob_start();
+    
+    // Выводим изображение в формате WEBP
+    imagewebp($image);
+    
+    // Получаем содержимое буфера и очищаем его
+    $webpImage = ob_get_clean();
+
+    // Освобождаем память
+    imagedestroy($image);
+
+    return 'data:image/webp;base64,' . base64_encode($webpImage);
+}
+                	
+                
+$inputImagePath;
+$filials = []; // id каждого филиала
+$categories = []; // id каждого направления
+$services = []; // id каждой услуги
+
+// URL для запроса всех филиалов
+$urlFilial = "https://b252821.yclients.com/api/v1/booking/chains/223519/locations/?include[]=city"; // Замените на актуальный URL для получения филиалов
+$bearer_token = "token"; // Замените на ваш Bearer токен
+
+// Инициализация cURL
+$ch = curl_init($urlFilial);
+
+// Установка заголовков
+curl_setopt($ch, CURLOPT_HTTPHEADER, [
+    "Authorization: Bearer $bearer_token",
+    "Content-Type: application/json"
+]);
+
+// Настройка cURL для возврата результата в виде строки
+curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+
+// Выполнение запроса
+$response = curl_exec($ch);
+
+// Проверка на ошибки
+if (curl_errno($ch)) {
+    echo "Ошибка cURL: " . curl_error($ch);
+} else {
+    // Декодирование JSON-ответа
+    $data = json_decode($response, true);
+
+    echo "<h2>Цены актуальные на " . date('d/m/Y') . ":</h2>";
+
+    if (!empty($data['data'])): ?>
+        <?php foreach ($data['data'] as $location): ?>
+            <?php
+            // Получаем данные филиала
+            $filials[] = $location['id'];
+            $filialTitle = htmlspecialchars($location['attributes']['title']);
+
+            // Запрос категорий для текущего филиала
+            $urlCategory = "https://b252821.yclients.com/api/v1/book_services/" . end($filials);
+            $chCat = curl_init($urlCategory);
+            curl_setopt($chCat, CURLOPT_HTTPHEADER, [
+                "Authorization: Bearer $bearer_token",
+                "Content-Type: application/json"
+            ]);
+            curl_setopt($chCat, CURLOPT_RETURNTRANSFER, true);
+            $responseCat = curl_exec($chCat);
+            $dataCat = json_decode($responseCat, true);
+            curl_close($chCat);
+            ?>
+
+            <details class="firstDetail">
+                <summary class="firstStep"><?= $filialTitle ?></summary>
+
+                <?php if (!empty($dataCat['category'])): ?>
+                    <?php foreach ($dataCat['category'] as $category): ?>
+                        <?php
+                        $categories[] = $category['id'];
+                        $categoryTitle = htmlspecialchars($category['title']);
+                        ?>
+                        <details class="secondDetail">
+                            <summary class="secStep"><?= $categoryTitle ?></summary>
+
+                            <!-- Часть с услугами по выбранной категории -->
+                            <?php if (!empty($dataCat['services'])): ?>
+                                <?php foreach ($dataCat['services'] as $service): ?>
+                                    <?php if ($service['category_id'] == $category['id']): ?>
+                                        <?php
+                                        $serviceTitle = htmlspecialchars($service['title']);
+                                        if($service['price_max'] == $service['price_min'])
+                                        {
+                                            $servicePrice = htmlspecialchars($service['price_max']);
+                                        }
+                                        else {
+                                            $servicePrice ="от ". htmlspecialchars($service['price_min']) . " до ".htmlspecialchars($service['price_max']);
+                                        }
+                                        $inputImagePath = htmlspecialchars($service['image']); //сохранение ссылки
+                                        //$webpImageSrc = convertPngToWebp(htmlspecialchars($service['image']));
+                                        $serviceDescription = htmlspecialchars($service['comment']); // Предполагается, что описание услуги доступно в ответе API.
+                                        ?>
+                                        <details class="thirdDetail">
+                                            <summary class="thirtStep"><?= $serviceTitle ?> - <?= $servicePrice ?> руб.</summary>
+                                             <!-- <div style="text-align: center;"><img src="<?=  htmlspecialchars($service['image']) ?>">
+                                            <div style="text-align: center;"><img src="  //$webpImageSrc "> 
+                                            </img></div> -->
+                                            <pre><?= $serviceDescription ?></pre>
+                                        </details>
+                                        
+                                    <?php endif; ?>
+                                <?php endforeach; ?>
+                            <?php else: ?>
+                                <p>Нет доступных услуг.</p>
+                            <?php endif; ?>
+                        </details>
+                    <?php endforeach; ?>
+                <?php else: ?>
+                    <p>Нет доступных категорий.</p>
+                <?php endif; ?>
+
+            </details>
+        <?php endforeach; ?>
+    <?php else: ?>
+        <p>Нет доступных данных.</p>
+    <?php endif;
+    // Закрытие cURL
+    curl_close($ch);
+}
+?>
+
+</div>
+<script>
+function closeNestedDetails(detail) {
+    detail.querySelectorAll('details').forEach(function(childDetail) {
+        childDetail.removeAttribute('open'); // Закрываем все вложенные details
+    });
+}
+
+// Обработчик для первого уровня details
+document.querySelectorAll('details.firstDetail').forEach(function(detail) {
+    detail.addEventListener('toggle', function() {
+        if (!this.open) { // Если родительский detail закрывается
+            closeNestedDetails(this); // Закрываем все вложенные details
+        }
+    });
+});
+
+// Обработчик для второго уровня details
+document.querySelectorAll('details.secondDetail').forEach(function(detail) {
+    detail.addEventListener('toggle', function() {
+        if (!this.open) { // Если родительский detail закрывается
+            closeNestedDetails(this); // Закрываем все вложенные details
+        }
+    });
+});
+
+// Обработчик для третьего уровня details
+document.querySelectorAll('details.thirdDetail').forEach(function(detail) {
+    detail.addEventListener('toggle', function() {
+        if (!this.open) { // Если родительский detail закрывается
+            closeNestedDetails(this); // Закрываем все вложенные details
+        }
+    });
+});
+</script>
